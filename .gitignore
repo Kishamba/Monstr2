@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+data/trades.db
+data/logs/
+.venv/
+*.pkl
+*.log
+.DS_Store
+.claude/
+brain/
