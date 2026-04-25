@@ -42,6 +42,7 @@ def bottom_keyboard() -> ReplyKeyboardMarkup:
             ],
         ],
         resize_keyboard=True,
+        persistent=True,
         input_field_placeholder="Выбери действие...",
     )
 
@@ -109,7 +110,7 @@ class TelegramCommands:
             pass
 
         return (
-            f"📊 <b>Monster 2.0 — Статус</b>\n\n"
+            f"📊 <b>Monster 2.1 — Статус</b>\n\n"
             f"Режим:          {mode}\n"
             f"💰 Капитал:     <b>${capital:,.2f}</b>\n"
             f"{session_line}"
@@ -315,7 +316,7 @@ class TelegramCommands:
         adx_thr = sc.adx_threshold if sc else "—"
         chop_thr = sc.chop_threshold if sc else "—"
         return (
-            f"⚙️ <b>Настройки Monster 2.0</b>\n\n"
+            f"⚙️ <b>Настройки Monster 2.1</b>\n\n"
             f"Режим:         {mode}\n"
             f"Капитал:       ${cfg.shadow_capital:,.2f}\n"
             f"Плечо:         {cfg.leverage}x\n"
@@ -324,14 +325,15 @@ class TelegramCommands:
             f"ADX порог:     {adx_thr}\n"
             f"Chop порог:    {chop_thr}\n"
             f"Bad hours UTC: {bad}\n"
-            f"Стратегии:     KeltnerAdxChop + EMA_MACD"
+            f"Стратегии:     Keltner + EMA_MACD + AroonMacd"
         )
 
     # ── Command handlers ──────────────────────────────────────────────────────
 
     async def cmd_start(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
-            "🤖 <b>Monster 2.0</b>\n\n"
+            "🤖 <b>Monster 2.1</b>\n\n"
+            "Стратегии: Keltner + EMA_MACD + AroonMacd\n"
             "Кнопки управления закреплены внизу 👇\n"
             "Нажми любую кнопку или введи команду.",
             parse_mode='HTML',

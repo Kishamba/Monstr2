@@ -30,7 +30,7 @@ from core.signal_monitor import SignalMonitor
 from core.direction_filter import is_direction_allowed
 from strategies.keltner_adx import KeltnerAdxStrategy
 from strategies.ema_macd import EMAMACDStrategy
-from strategies.rsi_momentum import RSIMomentumStrategy
+from strategies.aroon_macd import AroonMacdStrategy
 
 
 async def main():
@@ -43,7 +43,7 @@ async def main():
     risk_filter = RiskFilter(config)
     strategy_keltner = KeltnerAdxStrategy(strategy_config)
     strategy_ema = EMAMACDStrategy(strategy_config)
-    strategy_rsi = RSIMomentumStrategy(strategy_config)
+    strategy_aroon = AroonMacdStrategy(strategy_config)
     position_manager = PositionManager(config, data_feed, notifier)
     signal_monitor = SignalMonitor(flip_threshold=0.65)
 
@@ -58,13 +58,12 @@ async def main():
 
     mode_label = "SHADOW" if config.trading_mode == 'shadow' else "LIVE"
     await notifier.send_message(
-        f"🚀 <b>Monster 2.0 запущен</b>\n"
-        f"Режим: {mode_label}\n"
-        f"Капитал: ${config.shadow_capital:,.2f}\n"
-        f"Стратегии: KeltnerAdxChop + EMA_MACD\n"
-        f"Пары: {', '.join(config.symbols)}"
+        f"🚀 <b>Monster 2.1</b>\n"
+        f"Стратегии: Keltner + EMA_MACD + AroonMacd\n"
+        f"Режим: {mode_label} | Капитал: ${config.shadow_capital:,.2f}\n"
+        f"Пары: {', '.join(s.replace('/USDT:USDT','') for s in config.symbols)}"
     )
-    logger.info(f"Monster 2.0 started in {mode_label} mode (KeltnerAdxChop + EMA_MACD)")
+    logger.info(f"Monster 2.1 started in {mode_label} mode (Keltner + EMA_MACD + AroonMacd)")
 
     heartbeat_counter = 0
     current_day = date.today()
@@ -97,9 +96,9 @@ async def main():
                     )
                     sk = strategy_keltner.get_signal(ind)
                     se = strategy_ema.get_signal(ind)
-                    sr = strategy_rsi.get_signal(ind)
+                    sa = strategy_aroon.get_signal(ind)
                     active = [(s, n) for s, n in
-                              [(sk, 'K'), (se, 'E'), (sr, 'R')]
+                              [(sk, 'K'), (se, 'E'), (sa, 'A')]
                               if s['action'] != 'hold']
                     if active:
                         best, _ = max(active, key=lambda x: x[0]['strength'])
@@ -161,12 +160,12 @@ async def main():
                 # 3. Получить сигналы от трёх стратегий
                 sig_keltner = strategy_keltner.get_signal(indicators)
                 sig_ema     = strategy_ema.get_signal(indicators)
-                sig_rsi     = strategy_rsi.get_signal(indicators)
+                sig_aroon   = strategy_aroon.get_signal(indicators)
 
                 all_signals = [
                     (sig_keltner, 'KeltnerAdxChop'),
                     (sig_ema,     'EMA_MACD'),
-                    (sig_rsi,     'RSI_Momentum'),
+                    (sig_aroon,   'AroonMacd'),
                 ]
 
                 long_votes  = sum(1 for s, _ in all_signals if s['action'] == 'long')

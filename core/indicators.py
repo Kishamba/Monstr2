@@ -1,7 +1,10 @@
+import logging
 import numpy as np
 import pandas as pd
 import talib
 from config import StrategyConfig
+
+logger = logging.getLogger(__name__)
 
 
 class Indicators:
@@ -47,6 +50,34 @@ class Indicators:
         result['macd_hist'] = float(macd_hist[-1])
 
         result['close_1h'] = float(close_1h[-1])
+
+        # Aroon для AroonMacd стратегии
+        AROON_W = 15
+        MACD_W  = 5
+        try:
+            aroon_raw     = talib.AROON(high_1h, low_1h, timeperiod=14)
+            aroondown_arr = aroon_raw[0]   # talib: AROON → (aroondown, aroonup)
+            aroonup_arr   = aroon_raw[1]
+            aroonosc_arr  = talib.AROONOSC(high_1h, low_1h, timeperiod=14)
+
+            result['aroonup']        = float(aroonup_arr[-1])
+            result['aroondown']      = float(aroondown_arr[-1])
+            result['aroonosc']       = float(aroonosc_arr[-1])
+            result['aroonosc_prev']  = float(aroonosc_arr[-2])
+            result['aroonup_hist']   = [float(x) for x in aroonup_arr[-AROON_W:]]
+            result['aroondown_hist'] = [float(x) for x in aroondown_arr[-AROON_W:]]
+            result['macd_hist_arr']  = [float(x) for x in macd[-MACD_W:]]
+            result['macd_sig_arr']   = [float(x) for x in macd_signal[-MACD_W:]]
+        except Exception as _e:
+            logger.debug(f"Aroon calc error: {_e}")
+            result['aroonup']        = 50.0
+            result['aroondown']      = 50.0
+            result['aroonosc']       = 0.0
+            result['aroonosc_prev']  = 0.0
+            result['aroonup_hist']   = []
+            result['aroondown_hist'] = []
+            result['macd_hist_arr']  = []
+            result['macd_sig_arr']   = []
 
         # ── 5M indicators ──────────────────────────────────────────────────────
         close_5m = df_5m['close'].values.astype(float)
