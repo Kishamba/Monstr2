@@ -25,24 +25,14 @@ def bottom_keyboard() -> ReplyKeyboardMarkup:
     """Постоянная клавиатура внизу экрана."""
     return ReplyKeyboardMarkup(
         keyboard=[
-            [
-                KeyboardButton("📊 Статус"),
-                KeyboardButton("💼 Позиции"),
-            ],
-            [
-                KeyboardButton("📜 Сделки"),
-                KeyboardButton("📈 Рынок"),
-            ],
-            [
-                KeyboardButton("⚙️ Настройки"),
-                KeyboardButton("📊 Отчёт"),
-            ],
-            [
-                KeyboardButton("🔴 Закрыть позицию"),
-            ],
+            [KeyboardButton("📊 Статус"),
+             KeyboardButton("💼 Позиции")],
+            [KeyboardButton("📜 Сделки"),
+             KeyboardButton("📈 Рынок")],
+            [KeyboardButton("🔴 Закрыть позицию"),
+             KeyboardButton("⚙️ Настройки")],
         ],
         resize_keyboard=True,
-        persistent=True,
         input_field_placeholder="Выбери действие...",
     )
 
@@ -332,11 +322,7 @@ class TelegramCommands:
 
     async def cmd_start(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
-            "🤖 <b>Monster 2.1</b>\n\n"
-            "Стратегии: Keltner + EMA_MACD + AroonMacd\n"
-            "Кнопки управления закреплены внизу 👇\n"
-            "Нажми любую кнопку или введи команду.",
-            parse_mode='HTML',
+            "👋 Monster 2.1 на связи!\nВыбери действие:",
             reply_markup=bottom_keyboard(),
         )
 
@@ -363,7 +349,7 @@ class TelegramCommands:
 
     async def cmd_help(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
-            "🤖 <b>Monster 2.0 — Команды</b>\n\n"
+            "🤖 <b>Monster 2.1 — Команды</b>\n\n"
             "/start — главное меню\n"
             "/status — текущий статус\n"
             "/positions — открытые позиции\n"
@@ -377,7 +363,7 @@ class TelegramCommands:
     async def cmd_stop(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         self.pm.stop_requested = True
         await update.message.reply_text(
-            "🛑 <b>Остановка Monster 2.0...</b>",
+            "🛑 <b>Остановка Monster 2.1...</b>",
             parse_mode='HTML',
             reply_markup=bottom_keyboard(),
         )

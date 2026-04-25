@@ -16,7 +16,7 @@ class TradingConfig:
         'AVAX/USDT:USDT',
     ])
     timeframe: str = '1h'
-    timeframe_fast: str = '5m'
+    timeframe_fast: str = '15m'
     leverage: int = 10
     risk_per_trade_pct: float = 1.0
     min_rr_ratio: float = 2.0
@@ -38,9 +38,9 @@ class StrategyConfig:
     # KeltnerAdxChop параметры
     kc_period: int = 20
     kc_atr_mult: float = 2.0
-    adx_threshold: float = 18.0
-    chop_threshold: float = 50.0
-    atr_mult: float = 1.0
+    adx_threshold: float = 15.0
+    chop_threshold: float = 55.0
+    atr_mult: float = 2.0
     risk_ratio: float = 2.0
 
 

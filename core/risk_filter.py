@@ -64,11 +64,16 @@ class RiskFilter:
                 )
                 return False, f"sl_cooldown_{symbol}"
 
-        # 6. ADX too low
-        adx = indicators.get('adx_1h', 0)
-        if adx < 15:
-            logger.info(f"RiskFilter blocked: adx_too_low ({adx:.1f})")
-            return False, "adx_too_low"
+        # 6. ADX too low — берём лучший из доступных таймфреймов
+        adx_1h  = indicators.get('adx_1h',  0)
+        adx_15m = indicators.get('adx_15m', 0)
+        adx     = max(adx_1h, adx_15m)
+        if adx < self.config.adx_threshold:
+            logger.info(
+                f"RiskFilter blocked: adx_too_low "
+                f"(1h={adx_1h:.1f} 15m={adx_15m:.1f})"
+            )
+            return False, f"adx_too_low (1h={adx_1h:.1f} 15m={adx_15m:.1f})"
 
         return True, "ok"
 

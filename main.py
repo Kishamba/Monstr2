@@ -260,14 +260,6 @@ async def main():
                     await asyncio.sleep(3)
                     continue
 
-                if indicators.get('adx_1h', 0) < 20:
-                    logger.info(
-                        f"{symbol}: ADX too low "
-                        f"adx={indicators.get('adx_1h', 0):.0f}, skip"
-                    )
-                    await asyncio.sleep(3)
-                    continue
-
                 # 6. Рассчитать уровни (используем стратегию-источник)
                 entry_price = market_data['ticker']['price']
                 if signal['source'] in ('KeltnerAdxChop', 'BOTH'):

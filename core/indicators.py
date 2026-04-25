@@ -88,6 +88,28 @@ class Indicators:
         result['rsi_5m'] = float(talib.RSI(close_5m, timeperiod=14)[-1])
         result['atr_5m'] = float(talib.ATR(high_5m, low_5m, close_5m, timeperiod=14)[-1])
 
+        # ADX / RSI на 15m (ресэмплируем 5m → 15m)
+        try:
+            df_15m = df_5m.set_index('timestamp').resample('15min').agg({
+                'open':   'first',
+                'high':   'max',
+                'low':    'min',
+                'close':  'last',
+                'volume': 'sum',
+            }).dropna()
+            if len(df_15m) >= 20:
+                h15 = df_15m['high'].values.astype(float)
+                l15 = df_15m['low'].values.astype(float)
+                c15 = df_15m['close'].values.astype(float)
+                result['adx_15m'] = float(talib.ADX(h15, l15, c15, timeperiod=14)[-1])
+                result['rsi_15m'] = float(talib.RSI(c15, timeperiod=14)[-1])
+            else:
+                result['adx_15m'] = result['adx_1h']
+                result['rsi_15m'] = result['rsi_1h']
+        except Exception:
+            result['adx_15m'] = result['adx_1h']
+            result['rsi_15m'] = result['rsi_1h']
+
         # ── Signal logic (KeltnerAdxChop) ──────────────────────────────────────
         close = result['close_1h']
         adx = result['adx_1h']
