@@ -40,7 +40,7 @@ class StrategyConfig:
     kc_atr_mult: float = 2.0
     adx_threshold: float = 15.0
     chop_threshold: float = 55.0
-    atr_mult: float = 2.0
+    atr_mult: float = 1.0
     risk_ratio: float = 2.0
 
 

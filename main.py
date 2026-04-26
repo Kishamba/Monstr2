@@ -40,7 +40,7 @@ async def main():
     notifier = Notifier()
     data_feed = DataFeed(config)
     indicators_calc = Indicators()
-    risk_filter = RiskFilter(config)
+    risk_filter = RiskFilter(config, adx_threshold=strategy_config.adx_threshold)
     strategy_keltner = KeltnerAdxStrategy(strategy_config)
     strategy_ema = EMAMACDStrategy(strategy_config)
     strategy_aroon = AroonMacdStrategy(strategy_config)
@@ -252,13 +252,44 @@ async def main():
                     await asyncio.sleep(3)
                     continue
 
-                if signal.get('strength', 0) < 0.3:
+                if signal.get('strength', 0) < 0.5:
                     logger.info(
                         f"{symbol}: signal too weak "
                         f"str={signal.get('strength', 0):.2f}, skip"
                     )
                     await asyncio.sleep(3)
                     continue
+
+                # Фильтр ADX — реальный тренд
+                adx = max(
+                    indicators.get('adx_1h', 0),
+                    indicators.get('adx_15m', 0),
+                )
+                if adx < 18:
+                    logger.info(
+                        f"{symbol}: ADX too weak "
+                        f"(1h={indicators.get('adx_1h',0):.1f} "
+                        f"15m={indicators.get('adx_15m',0):.1f}), skip"
+                    )
+                    await asyncio.sleep(2)
+                    continue
+
+                # Фильтр контртренда — против bias требуем 3/3
+                market_bias = getattr(signal_monitor, 'market_bias', 'neutral')
+                bias_strength = getattr(signal_monitor, 'bias_strength', 0)
+                is_against_bias = (
+                    (signal['action'] == 'long'  and market_bias == 'short')
+                    or
+                    (signal['action'] == 'short' and market_bias == 'long')
+                )
+                if is_against_bias and bias_strength >= 0.65:
+                    if 'CONSENSUS_3' not in signal.get('source', ''):
+                        logger.info(
+                            f"{symbol}: against bias={market_bias} "
+                            f"({bias_strength:.0%}) — need 3/3, skip"
+                        )
+                        await asyncio.sleep(2)
+                        continue
 
                 # 6. Рассчитать уровни (используем стратегию-источник)
                 entry_price = market_data['ticker']['price']

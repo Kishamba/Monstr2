@@ -55,11 +55,11 @@ CREATE TABLE IF NOT EXISTS sessions (
 class PositionManager:
 
     PARTIAL_TP_DOLLAR  = 6.0   # фиксируем $6 с первой половины
-    TRAIL_ACTIVATE_PCT = 0.8   # trailing активируется на +0.8%
-    TRAIL_DIST_PCT     = 0.5   # дистанция trailing
+    TRAIL_ACTIVATE_PCT = 0.5   # trailing активируется на +0.5%
+    TRAIL_DIST_PCT     = 0.4   # дистанция trailing
     MAX_HOLD_HOURS     = 4
-    STAGNATION_MINUTES = 90
-    STAGNATION_BAND    = 0.15
+    STAGNATION_MINUTES = 45
+    STAGNATION_BAND    = 0.20
 
     def __init__(self, config, data_feed, notifier):
         self.config = config
