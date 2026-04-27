@@ -338,13 +338,10 @@ async def main():
                 closed = await position_manager.check_positions(prices)
 
                 for trade in closed:
-                    reason = trade.get('exit_reason', 'unknown')
-                    if reason == 'SL':
-                        risk_filter.record_sl_for_symbol(
-                            trade.get('symbol', '')
-                        )
-                    else:
-                        risk_filter.record_win()
+                    risk_filter.record_close(
+                        trade.get('exit_reason', 'unknown'),
+                        symbol=trade.get('symbol', ''),
+                    )
 
             # 9. Heartbeat каждый час (~40 итераций по 90 сек)
             heartbeat_counter += 1

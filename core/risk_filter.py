@@ -7,10 +7,13 @@ logger = logging.getLogger(__name__)
 
 class RiskFilter:
 
-    def __init__(self, config: TradingConfig):
+    def __init__(self, config: TradingConfig, adx_threshold: float = 15.0):
         self.config = config
+        self.adx_threshold = adx_threshold
         self.consecutive_sl: int = 0
-        self.sl_cooldown: dict = {}  # symbol → datetime
+        self.sl_cooldown: dict = {}         # symbol → datetime
+        self.stagnation_cooldown: dict = {} # symbol → datetime
+        self.stagnation_streak: dict = {}   # symbol → count
 
     def check(
         self,
@@ -64,11 +67,27 @@ class RiskFilter:
                 )
                 return False, f"sl_cooldown_{symbol}"
 
+        # 5в. Cooldown после повторных стагнаций — 1 час
+        if symbol and symbol in self.stagnation_cooldown:
+            elapsed = (
+                datetime.now(timezone.utc) - self.stagnation_cooldown[symbol]
+            ).total_seconds() / 3600
+            if elapsed < 1.0:
+                remaining = 1.0 - elapsed
+                logger.info(
+                    f"RiskFilter blocked: stagnation_cooldown {symbol} "
+                    f"({remaining:.1f}h left)"
+                )
+                return False, f"stagnation_cooldown_{symbol}"
+            else:
+                del self.stagnation_cooldown[symbol]
+                self.stagnation_streak[symbol] = 0
+
         # 6. ADX too low — берём лучший из доступных таймфреймов
         adx_1h  = indicators.get('adx_1h',  0)
         adx_15m = indicators.get('adx_15m', 0)
         adx     = max(adx_1h, adx_15m)
-        if adx < self.config.adx_threshold:
+        if adx < self.adx_threshold:
             logger.info(
                 f"RiskFilter blocked: adx_too_low "
                 f"(1h={adx_1h:.1f} 15m={adx_15m:.1f})"
@@ -77,16 +96,36 @@ class RiskFilter:
 
         return True, "ok"
 
+    def record_close(self, exit_reason: str, symbol: str = ''):
+        if exit_reason == 'SL':
+            self.consecutive_sl += 1
+            if symbol:
+                self.sl_cooldown[symbol] = datetime.now(timezone.utc)
+            self.stagnation_streak[symbol] = 0
+            logger.info(
+                f"SL streak: {self.consecutive_sl} | cooldown: {symbol}"
+            )
+        elif exit_reason == 'Breakeven_Stagnation':
+            self.consecutive_sl = 0
+            streak = self.stagnation_streak.get(symbol, 0) + 1
+            self.stagnation_streak[symbol] = streak
+            if streak >= 2:
+                self.stagnation_cooldown[symbol] = datetime.now(timezone.utc)
+                logger.info(
+                    f"STAGNATION cooldown: {symbol} "
+                    f"({streak} stagnations in a row)"
+                )
+        else:
+            self.consecutive_sl = 0
+            if symbol:
+                self.stagnation_streak[symbol] = 0
+
+    # Обратная совместимость
     def record_sl(self):
         self.consecutive_sl += 1
 
     def record_sl_for_symbol(self, symbol: str):
-        self.sl_cooldown[symbol] = datetime.now(timezone.utc)
-        self.consecutive_sl += 1
-        logger.info(
-            f"SL recorded: {symbol} cooldown 3h | "
-            f"streak={self.consecutive_sl}"
-        )
+        self.record_close('SL', symbol)
 
     def record_win(self):
         self.consecutive_sl = 0

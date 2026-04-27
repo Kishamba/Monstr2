@@ -18,7 +18,7 @@ class TradingConfig:
     timeframe: str = '1h'
     timeframe_fast: str = '15m'
     leverage: int = 10
-    risk_per_trade_pct: float = 1.0
+    risk_per_trade_pct: float = 0.5
     min_rr_ratio: float = 2.0
     max_daily_loss_pct: float = 5.0
     max_concurrent_positions: int = 4
