@@ -274,22 +274,27 @@ async def main():
                     await asyncio.sleep(2)
                     continue
 
-                # Фильтр контртренда — против bias требуем 3/3
-                market_bias = getattr(signal_monitor, 'market_bias', 'neutral')
-                bias_strength = getattr(signal_monitor, 'bias_strength', 0)
-                is_against_bias = (
-                    (signal['action'] == 'long'  and market_bias == 'short')
-                    or
-                    (signal['action'] == 'short' and market_bias == 'long')
-                )
-                if is_against_bias and bias_strength >= 0.65:
-                    if 'CONSENSUS_3' not in signal.get('source', ''):
-                        logger.info(
-                            f"{symbol}: against bias={market_bias} "
-                            f"({bias_strength:.0%}) — need 3/3, skip"
-                        )
-                        await asyncio.sleep(2)
-                        continue
+                # Жёсткий запрет входа против market bias
+                bias     = getattr(signal_monitor, 'market_bias', 'neutral')
+                strength = getattr(signal_monitor, 'bias_strength', 0)
+                if (bias == 'short'
+                        and strength >= 0.65
+                        and signal['action'] == 'long'):
+                    logger.info(
+                        f"{symbol}: LONG blocked — "
+                        f"market bias=SHORT {strength:.0%}"
+                    )
+                    await asyncio.sleep(2)
+                    continue
+                if (bias == 'long'
+                        and strength >= 0.65
+                        and signal['action'] == 'short'):
+                    logger.info(
+                        f"{symbol}: SHORT blocked — "
+                        f"market bias=LONG {strength:.0%}"
+                    )
+                    await asyncio.sleep(2)
+                    continue
 
                 # 6. Рассчитать уровни (используем стратегию-источник)
                 entry_price = market_data['ticker']['price']
