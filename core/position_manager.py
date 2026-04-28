@@ -67,12 +67,12 @@ class PositionManager:
         self.notifier = notifier
 
         self.shadow_mode = config.trading_mode == 'shadow'
-        self.capital = config.shadow_capital
-        self.daily_pnl = 0.0
         self.recent_trades = []
         self.stop_requested = False
 
         self._init_db()
+        self.capital   = self._restore_capital()
+        self.daily_pnl = self._restore_daily_pnl()
         self.session_id = self._start_session()
         self.positions = self._load_positions()
         if self.positions:
@@ -133,6 +133,37 @@ class PositionManager:
                 if col not in op_existing:
                     conn.execute(sql)
             conn.commit()
+
+    def _restore_capital(self) -> float:
+        base = self.config.shadow_capital
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                row = conn.execute(
+                    "SELECT SUM(pnl_value) FROM trades"
+                ).fetchone()
+                total_pnl = row[0] or 0.0
+            capital = base + total_pnl
+            logger.info(
+                f"Capital restored: ${base:.2f} base "
+                f"+ ${total_pnl:.2f} P&L = ${capital:.2f}"
+            )
+            return capital
+        except Exception as e:
+            logger.warning(f"Capital restore failed: {e}, using base ${base:.2f}")
+            return base
+
+    def _restore_daily_pnl(self) -> float:
+        try:
+            today = __import__('datetime').date.today().isoformat()
+            with sqlite3.connect(DB_PATH) as conn:
+                row = conn.execute(
+                    "SELECT SUM(pnl_value) FROM trades "
+                    "WHERE timestamp >= ?",
+                    (today,)
+                ).fetchone()
+                return row[0] or 0.0
+        except Exception:
+            return 0.0
 
     def _load_positions(self) -> dict:
         positions = {}
