@@ -309,7 +309,7 @@ async def main():
                     'action': signal['action'],
                     'sl_price': levels['sl'],
                     'tp_price': levels['tp'],
-                    'risk_pct': 1.0,
+                    'risk_pct': config.risk_per_trade_pct,
                     'confidence': 'medium',
                     'reason': (
                         f"{signal.get('source', '?')} | "
