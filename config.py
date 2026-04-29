@@ -22,7 +22,7 @@ class TradingConfig:
     min_rr_ratio: float = 2.0
     max_daily_loss_pct: float = 5.0
     max_concurrent_positions: int = 4
-    bad_hours_utc: list = field(default_factory=lambda: [0, 1, 2, 3, 4, 5])
+    bad_hours_utc: list = field(default_factory=lambda: [0, 1, 2, 3, 4, 5, 20, 21, 22, 23])
 
     # API keys (loaded from env)
     bybit_api_key: str = field(default_factory=lambda: os.getenv('BYBIT_API_KEY', ''))
