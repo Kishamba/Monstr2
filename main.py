@@ -252,7 +252,7 @@ async def main():
                     await asyncio.sleep(3)
                     continue
 
-                if signal.get('strength', 0) < 0.5:
+                if signal.get('strength', 0) < 0.3:
                     logger.info(
                         f"{symbol}: signal too weak "
                         f"str={signal.get('strength', 0):.2f}, skip"
@@ -265,7 +265,7 @@ async def main():
                     indicators.get('adx_1h', 0),
                     indicators.get('adx_15m', 0),
                 )
-                if adx < 18:
+                if adx < 12:
                     logger.info(
                         f"{symbol}: ADX too weak "
                         f"(1h={indicators.get('adx_1h',0):.1f} "

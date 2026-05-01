@@ -38,9 +38,9 @@ class StrategyConfig:
     # KeltnerAdxChop параметры
     kc_period: int = 20
     kc_atr_mult: float = 2.0
-    adx_threshold: float = 15.0
+    adx_threshold: float = 12.0
     chop_threshold: float = 55.0
-    atr_mult: float = 1.0
+    atr_mult: float = 0.5
     risk_ratio: float = 2.0
 
 
