@@ -59,7 +59,7 @@ class PositionManager:
     TRAIL_DIST_PCT     = 0.4   # дистанция trailing
     MAX_HOLD_HOURS     = 4
     STAGNATION_MINUTES = 45
-    STAGNATION_BAND    = 0.20
+    STAGNATION_BAND    = 0.10
 
     def __init__(self, config, data_feed, notifier):
         self.config = config
@@ -265,9 +265,14 @@ class PositionManager:
             logger.warning(f"SL distance ~0 for {symbol}, skip")
             return {}
 
-        risk_amount   = capital * (risk_pct / 100)
-        position_size = risk_amount / sl_distance
-        notional      = position_size * entry_price
+        fee_rate       = 0.00055
+        risk_amount    = capital * (risk_pct / 100)
+        sl_pct         = sl_distance / entry_price
+        est_notional   = risk_amount / sl_pct
+        est_fees       = est_notional * fee_rate * 2
+        net_risk       = max(risk_amount - est_fees, 0.01)
+        position_size  = net_risk / sl_distance
+        notional       = position_size * entry_price
 
         pos = {
             'symbol':          symbol,

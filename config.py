@@ -21,7 +21,7 @@ class TradingConfig:
     risk_per_trade_pct: float = 0.5
     min_rr_ratio: float = 2.0
     max_daily_loss_pct: float = 5.0
-    max_concurrent_positions: int = 4
+    max_concurrent_positions: int = 2
     bad_hours_utc: list = field(default_factory=lambda: [0, 1, 2, 3, 4, 5, 20, 21, 22, 23])
 
     # API keys (loaded from env)

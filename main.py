@@ -252,7 +252,7 @@ async def main():
                     await asyncio.sleep(3)
                     continue
 
-                if signal.get('strength', 0) < 0.3:
+                if signal.get('strength', 0) < 0.5:
                     logger.info(
                         f"{symbol}: signal too weak "
                         f"str={signal.get('strength', 0):.2f}, skip"
