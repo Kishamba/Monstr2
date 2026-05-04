@@ -59,7 +59,7 @@ class PositionManager:
     TRAIL_DIST_PCT     = 0.4   # дистанция trailing
     MAX_HOLD_HOURS     = 4
     STAGNATION_MINUTES = 45
-    STAGNATION_BAND    = 0.10
+    STAGNATION_BAND    = 0.20
 
     def __init__(self, config, data_feed, notifier):
         self.config = config
