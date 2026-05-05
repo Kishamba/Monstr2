@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 class PositionManager:
 
+    FIXED_TP_DOLLAR    = 4.0   # закрываем при +$4
     PARTIAL_TP_DOLLAR  = 6.0   # фиксируем $6 с первой половины
     TRAIL_ACTIVATE_PCT = 0.5   # trailing активируется на +0.5%
     TRAIL_DIST_PCT     = 0.4   # дистанция trailing
@@ -346,8 +347,23 @@ class PositionManager:
 
             exit_reason = None
 
+            # ── FIXED TP: закрываем при +$4 ─────────────────────────────
+            if not exit_reason:
+                if side == 'long':
+                    current_pnl = (price - entry) * pos['size']
+                else:
+                    current_pnl = (entry - price) * pos['size']
+
+                if current_pnl >= self.FIXED_TP_DOLLAR:
+                    exit_reason = 'Fixed_TP'
+                    logger.info(
+                        f"FIXED_TP {symbol} | "
+                        f"pnl=${current_pnl:.2f} >= "
+                        f"${self.FIXED_TP_DOLLAR}"
+                    )
+
             # ── ЧАСТИЧНЫЙ TP: фиксируем $6 с 50% позиции ────────────────
-            if not partial_done and current_pnl >= self.PARTIAL_TP_DOLLAR:
+            if not exit_reason and not partial_done and current_pnl >= self.PARTIAL_TP_DOLLAR:
                 half_pnl  = current_pnl * 0.5
                 half_size = size * 0.5
                 half_notional = notional * 0.5
