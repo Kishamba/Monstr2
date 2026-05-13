@@ -197,6 +197,15 @@ async def main():
                     f"RSI={indicators.get('rsi_1h', 0):.0f}"
                 )
 
+                # Входим только при согласии 2+ стратегий
+                if 'CONSENSUS' not in signal.get('source', ''):
+                    logger.info(
+                        f"{symbol}: no consensus — "
+                        f"src={signal.get('source','?')} skip"
+                    )
+                    await asyncio.sleep(2)
+                    continue
+
                 # 4а. Фильтр по направлению на основе исторических данных
                 if not is_direction_allowed(symbol, signal['action']):
                     logger.info(

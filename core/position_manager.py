@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 class PositionManager:
 
-    FIXED_TP_DOLLAR    = 4.0   # закрываем при +$4
+    FIXED_TP_DOLLAR    = 6.0   # закрываем при +$6
     PARTIAL_TP_DOLLAR  = 6.0   # фиксируем $6 с первой половины
     TRAIL_ACTIVATE_PCT = 0.5   # trailing активируется на +0.5%
     TRAIL_DIST_PCT     = 0.4   # дистанция trailing
