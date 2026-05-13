@@ -95,6 +95,7 @@ class PositionManager:
             'partial_tp_dollar': self.PARTIAL_TP_DOLLAR,
         }
         with sqlite3.connect(DB_PATH) as conn:
+            conn.execute("DELETE FROM open_positions")
             cur = conn.execute(
                 "INSERT INTO sessions (started_at, config_json) VALUES (?, ?)",
                 (
@@ -104,7 +105,7 @@ class PositionManager:
             )
             conn.commit()
             sid = cur.lastrowid
-        logger.info(f"Session #{sid} started")
+        logger.info(f"Session #{sid} started — open_positions cleared")
         return sid
 
     def _init_db(self):
