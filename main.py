@@ -287,7 +287,7 @@ async def main():
                 bias     = getattr(signal_monitor, 'market_bias', 'neutral')
                 strength = getattr(signal_monitor, 'bias_strength', 0)
                 if (bias == 'short'
-                        and strength >= 0.65
+                        and strength >= 0.50
                         and signal['action'] == 'long'):
                     logger.info(
                         f"{symbol}: LONG blocked — "
@@ -296,7 +296,7 @@ async def main():
                     await asyncio.sleep(2)
                     continue
                 if (bias == 'long'
-                        and strength >= 0.65
+                        and strength >= 0.50
                         and signal['action'] == 'short'):
                     logger.info(
                         f"{symbol}: SHORT blocked — "
