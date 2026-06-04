@@ -1,7 +1,10 @@
+import asyncio
 import logging
 import os
 import sqlite3
 from datetime import datetime, timezone
+
+import httpx
 
 from telegram import (
     Update,
@@ -224,30 +227,118 @@ class TelegramCommands:
         return "\n".join(lines)
 
     async def _market_text(self) -> str:
+        """Человекочитаемый анализ рынка через Claude."""
         if not self.data_feed or not self.indicators_calc:
             return "📈 <b>Данные рынка недоступны</b>"
+        try:
+            lines = []
+            for symbol in self.pm.config.symbols:
+                try:
+                    data = await self.data_feed.get_all_data(symbol)
+                    ind = self.indicators_calc.calculate_all(
+                        data['ohlcv_1h'], data['ohlcv_5m'], self.strategy_config
+                    )
+                    name  = symbol.replace('/USDT:USDT', '')
+                    price = data['ticker']['price']
+                    adx   = ind.get('adx_1h', 0)
+                    rsi   = ind.get('rsi_1h', 50)
+                    chop  = ind.get('chop', 50)
+                    ema8  = ind.get('ema_8', 0)
+                    ema21 = ind.get('ema_21', 0)
+                    macd  = ind.get('macd_hist', 0)
+                    lines.append(
+                        f"{name}: цена={price:.4f} "
+                        f"ADX={adx:.0f} RSI={rsi:.0f} "
+                        f"Chop={chop:.0f} "
+                        f"EMA={'бычий' if ema8 > ema21 else 'медвежий'} "
+                        f"MACD={'↑' if macd > 0 else '↓'}"
+                    )
+                    await asyncio.sleep(0.3)
+                except Exception as e:
+                    name = symbol.replace('/USDT:USDT', '')
+                    lines.append(f"{name}: ошибка {e}")
 
-        lines = ["📈 <b>Текущий рынок:</b>\n"]
-        for symbol in self.pm.config.symbols:
-            try:
-                data = await self.data_feed.get_all_data(symbol)
-                ind = self.indicators_calc.calculate_all(
-                    data['ohlcv_1h'], data['ohlcv_5m'], self.strategy_config
+            market_data = "\n".join(lines)
+            prompt = (
+                "Вот данные по крипто-рынку прямо сейчас:\n\n"
+                f"{market_data}\n\n"
+                "Напиши ОЧЕНЬ короткий анализ (5-7 строк) для трейдера.\n"
+                "Используй простой язык без технического жаргона.\n"
+                "Для каждой монеты одна строка — что происходит и куда движется.\n"
+                "В конце одна строка — общее настроение рынка.\n"
+                "Используй эмодзи. Без лишних слов."
+            )
+
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={
+                        "x-api-key": os.getenv("ANTHROPIC_API_KEY", ""),
+                        "anthropic-version": "2023-06-01",
+                        "content-type": "application/json",
+                    },
+                    json={
+                        "model": "claude-haiku-4-5-20251001",
+                        "max_tokens": 400,
+                        "messages": [{"role": "user", "content": prompt}],
+                    },
+                    timeout=15.0,
                 )
-                price = data['ticker']['price']
-                sig = ind['signal'].upper()
-                icon = "📈" if sig == "LONG" else ("📉" if sig == "SHORT" else "⏸")
-                name = symbol.replace('/USDT:USDT', '')
-                lines.append(
-                    f"{icon} <b>{name}</b> ${price:,.3f}\n"
-                    f"   ADX={ind['adx_1h']:.0f} "
-                    f"Chop={ind['chop']:.0f} "
-                    f"RSI={ind['rsi_1h']:.0f} → {sig}"
-                )
-            except Exception:
-                name = symbol.replace('/USDT:USDT', '')
-                lines.append(f"⚠️ {name}: ошибка")
-        return "\n".join(lines)
+
+            if response.status_code == 200:
+                analysis = response.json()["content"][0]["text"]
+                return f"📈 <b>Рынок сейчас</b>\n\n{analysis}"
+            raise Exception(f"API error {response.status_code}")
+
+        except Exception as e:
+            logger.warning("Claude market analysis failed: %s", e)
+            return await self._market_text_simple()
+
+    async def _market_text_simple(self) -> str:
+        """Простой анализ без Claude если API недоступен."""
+        if not self.data_feed or not self.indicators_calc:
+            return "📈 <b>Данные рынка недоступны</b>"
+        try:
+            result = ["📈 <b>Рынок сейчас</b>\n"]
+            for symbol in self.pm.config.symbols:
+                try:
+                    data  = await self.data_feed.get_all_data(symbol)
+                    ind   = self.indicators_calc.calculate_all(
+                        data['ohlcv_1h'], data['ohlcv_5m'], self.strategy_config
+                    )
+                    name  = symbol.replace('/USDT:USDT', '')
+                    price = data['ticker']['price']
+                    adx   = ind.get('adx_1h', 0)
+                    rsi   = ind.get('rsi_1h', 50)
+                    ema8  = ind.get('ema_8', 0)
+                    ema21 = ind.get('ema_21', 0)
+                    macd  = ind.get('macd_hist', 0)
+                    chop  = ind.get('chop', 50)
+
+                    bull     = sum([ema8 > ema21, macd > 0, rsi > 55, adx > 20])
+                    bear     = sum([ema8 < ema21, macd < 0, rsi < 45, adx > 20])
+                    sideways = chop > 55
+
+                    if sideways:
+                        mood, desc = '⚪', 'боковик, нет тренда'
+                    elif bull >= 3:
+                        mood = '🟢🔥' if adx > 30 else '🟢'
+                        desc = f'рост, RSI={rsi:.0f}'
+                    elif bear >= 3:
+                        mood = '🔴🔥' if adx > 30 else '🔴'
+                        desc = f'падение, RSI={rsi:.0f}'
+                    else:
+                        mood, desc = '⚪', 'неопределённость'
+
+                    result.append(f"{mood} <b>{name}</b> ${price:.4f} — {desc}")
+                    await asyncio.sleep(0.3)
+                except Exception:
+                    name = symbol.replace('/USDT:USDT', '')
+                    result.append(f"❓ <b>{name}</b> — нет данных")
+
+            return "\n".join(result)
+        except Exception as e:
+            return f"📈 Рынок: ошибка получения данных ({e})"
 
     def _close_menu_text(self) -> str:
         pm = self.pm
