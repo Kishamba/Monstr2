@@ -22,6 +22,7 @@ class RiskFilter:
         current_positions: dict,
         daily_pnl: float,
         symbol: str = '',
+        btc_trend: str = 'sideways',
     ) -> tuple[bool, str]:
 
         action = signal.get('action', 'hold')
@@ -30,6 +31,14 @@ class RiskFilter:
         if action == 'hold':
             logger.debug("RiskFilter blocked: no_signal")
             return False, "no_signal"
+
+        # 2. BTC macro filter — главный фильтр
+        if btc_trend == 'up' and action == 'short':
+            logger.info(f"RiskFilter blocked: btc_trend_up_no_short")
+            return False, "btc_trend_up_no_short"
+        if btc_trend == 'down' and action == 'long':
+            logger.info(f"RiskFilter blocked: btc_trend_down_no_long")
+            return False, "btc_trend_down_no_long"
 
         # 2. Bad hour
         current_hour = datetime.now(timezone.utc).hour

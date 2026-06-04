@@ -130,5 +130,23 @@ class DataFeed:
             'orderbook': orderbook,
         }
 
+    async def get_btc_trend(self) -> str:
+        """Returns 'up', 'down', or 'sideways' based on last 3 BTC 1h closes."""
+        try:
+            ohlcv = await self.get_ohlcv('BTC/USDT:USDT', '1h', limit=10)
+            if isinstance(ohlcv, pd.DataFrame):
+                closes = list(ohlcv['close'].values)
+            else:
+                closes = [c[4] for c in ohlcv]
+            if len(closes) < 4:
+                return 'sideways'
+            if closes[-1] > closes[-2] > closes[-3]:
+                return 'up'
+            elif closes[-1] < closes[-2] < closes[-3]:
+                return 'down'
+            return 'sideways'
+        except Exception:
+            return 'sideways'
+
     async def close(self):
         await self.exchange.close()

@@ -86,6 +86,10 @@ async def main():
             await notifier.send_message("🌅 Новый торговый день начат")
 
         try:
+            # ── BTC тренд — обновляем раз в цикл ────────────────────────
+            btc_trend = await data_feed.get_btc_trend()
+            logger.info(f"BTC trend: {btc_trend.upper()}")
+
             # ── Собираем сигналы по всем парам для монитора ──────────────
             all_pair_signals = []
             for sym in config.symbols:
@@ -254,6 +258,7 @@ async def main():
                     position_manager.positions,
                     position_manager.daily_pnl,
                     symbol=symbol,
+                    btc_trend=btc_trend,
                 )
 
                 if not allowed:
