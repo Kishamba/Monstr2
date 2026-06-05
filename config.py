@@ -18,10 +18,10 @@ class TradingConfig:
     timeframe: str = '1h'
     timeframe_fast: str = '15m'
     leverage: int = 10
-    risk_per_trade_pct: float = 0.5
-    min_rr_ratio: float = 2.0
+    risk_per_trade_pct: float = 0.25       # Phase1: was 0.5
+    min_rr_ratio: float = 1.5              # Phase6: min acceptable R:R
     max_daily_loss_pct: float = 5.0
-    max_concurrent_positions: int = 4
+    max_concurrent_positions: int = 2      # Phase1: was 4
     bad_hours_utc: list = field(default_factory=lambda: [0, 1, 2, 3, 4, 5, 20, 21, 22, 23])
 
     # API keys (loaded from env)
@@ -40,7 +40,7 @@ class StrategyConfig:
     kc_atr_mult: float = 2.0
     adx_threshold: float = 15.0
     chop_threshold: float = 55.0
-    atr_mult: float = 1.0
+    atr_mult: float = 1.3                  # Phase6: was 1.0 — wider SL
     risk_ratio: float = 2.0
 
 
