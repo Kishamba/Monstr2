@@ -34,6 +34,8 @@ def bottom_keyboard() -> ReplyKeyboardMarkup:
              KeyboardButton("📈 Рынок")],
             [KeyboardButton("🔴 Закрыть позицию"),
              KeyboardButton("⚙️ Настройки")],
+            [KeyboardButton("📊 Аналитика"),
+             KeyboardButton("🎯 Режим")],
         ],
         resize_keyboard=True,
         input_field_placeholder="Выбери действие...",
@@ -409,6 +411,81 @@ class TelegramCommands:
             f"Стратегии:     Keltner + EMA_MACD + AroonMacd"
         )
 
+    # ── Phase8: Analytics ─────────────────────────────────────────────────────
+
+    def _analytics_text(self) -> str:
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                by_symbol = conn.execute("""
+                    SELECT replace(symbol,'/USDT:USDT',''),
+                           COUNT(*), ROUND(SUM(pnl_value),2),
+                           ROUND(AVG(CASE WHEN pnl_value>0 THEN 1.0 ELSE 0 END)*100,0),
+                           ROUND(AVG(pnl_value),2)
+                    FROM trades GROUP BY symbol ORDER BY SUM(pnl_value) DESC
+                """).fetchall()
+                by_reason = conn.execute("""
+                    SELECT exit_reason, COUNT(*), ROUND(SUM(pnl_value),2),
+                           ROUND(AVG(CASE WHEN pnl_value>0 THEN 1.0 ELSE 0 END)*100,0)
+                    FROM trades GROUP BY exit_reason ORDER BY SUM(pnl_value) DESC
+                """).fetchall()
+                stats = conn.execute("""
+                    SELECT COUNT(*),
+                           AVG(CASE WHEN pnl_value>0 THEN pnl_value END),
+                           AVG(CASE WHEN pnl_value<=0 THEN pnl_value END),
+                           AVG(CASE WHEN pnl_value>0 THEN 1.0 ELSE 0 END)
+                    FROM trades
+                """).fetchone()
+
+            wr      = stats[3] or 0
+            avg_win  = stats[1] or 0
+            avg_loss = stats[2] or 0
+            exp = wr * avg_win + (1 - wr) * avg_loss
+            pf  = (wr * avg_win) / abs((1-wr) * avg_loss) if avg_loss else 0
+
+            lines = ["📊 <b>Аналитика</b>\n", "<b>По парам:</b>"]
+            for sym, cnt, pnl, wr_p, avg in by_symbol:
+                icon = "🟢" if (pnl or 0) >= 0 else "🔴"
+                lines.append(
+                    f"  {icon} {str(sym):6} {cnt:3}сд  "
+                    f"WR={wr_p or 0:3.0f}%  {pnl or 0:>+7.2f}$  avg={avg or 0:>+5.2f}$"
+                )
+            lines.append("\n<b>По причине выхода:</b>")
+            for reason, cnt, pnl, wr_p in by_reason:
+                icon = "🟢" if (pnl or 0) >= 0 else "🔴"
+                lines.append(
+                    f"  {icon} {str(reason):22} {cnt:3}сд  "
+                    f"WR={wr_p or 0:3.0f}%  {pnl or 0:>+7.2f}$"
+                )
+            lines.append(
+                f"\n<b>Expectancy:</b> {exp:>+.3f}$ / сделку"
+                f"\n<b>Profit factor:</b> {pf:.2f}"
+                f"\n<b>Avg win:</b> +{avg_win:.2f}$  <b>Avg loss:</b> {avg_loss:.2f}$"
+            )
+            return "\n".join(lines)
+        except Exception as e:
+            return f"❌ Ошибка аналитики: {e}"
+
+    async def cmd_analytics(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_text(
+            self._analytics_text(), parse_mode='HTML', reply_markup=bottom_keyboard()
+        )
+
+    async def cmd_regime(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        mr = getattr(self, 'market_regime', None)
+        if mr:
+            bias = mr.get_btc_bias()
+            impulse = mr.btc_impulse_active()
+            imp_dir = mr._btc_impulse_dir
+        else:
+            bias, impulse, imp_dir = 'unknown', False, None
+        icon = {'bullish': '📈', 'bearish': '📉', 'neutral': '⚪'}.get(bias, '❓')
+        imp_line = f"Импульс: {imp_dir} 🚨" if impulse else "Импульс: нет"
+        await update.message.reply_text(
+            f"🎯 <b>Режим рынка</b>\n\n"
+            f"{icon} BTC тренд: <b>{bias.upper()}</b>\n{imp_line}",
+            parse_mode='HTML', reply_markup=bottom_keyboard()
+        )
+
     # ── Command handlers ──────────────────────────────────────────────────────
 
     async def cmd_start(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -524,6 +601,14 @@ class TelegramCommands:
                 reply_markup=report_keyboard(),
             )
 
+        elif text == "📊 Аналитика":
+            await update.message.reply_text(
+                self._analytics_text(), parse_mode='HTML', reply_markup=bottom_keyboard()
+            )
+
+        elif text == "🎯 Режим":
+            await self.cmd_regime(update, ctx)
+
         elif text == "🔴 Закрыть позицию":
             reply = self._close_menu_text()
             await update.message.reply_text(
@@ -636,6 +721,8 @@ class TelegramCommands:
         self._app.add_handler(CommandHandler("help",      self.cmd_help))
         self._app.add_handler(CommandHandler("stop",      self.cmd_stop))
         self._app.add_handler(CommandHandler("report",    self.cmd_report))
+        self._app.add_handler(CommandHandler("analytics", self.cmd_analytics))
+        self._app.add_handler(CommandHandler("regime",    self.cmd_regime))
         self._app.add_handler(CallbackQueryHandler(self.button_callback))
         self._app.add_handler(
             MessageHandler(

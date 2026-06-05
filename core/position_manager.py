@@ -54,13 +54,15 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 class PositionManager:
 
-    FIXED_TP_DOLLAR    = 8.0   # закрываем при +$8
+    FIXED_TP_DOLLAR    = 4.5   # Phase2: earlier extraction (was $8)
     PARTIAL_TP_DOLLAR  = 6.0   # фиксируем $6 с первой половины
     TRAIL_ACTIVATE_PCT = 0.5   # trailing активируется на +0.5%
     TRAIL_DIST_PCT     = 0.4   # дистанция trailing
     MAX_HOLD_HOURS     = 4
-    STAGNATION_MINUTES = 45
+    STAGNATION_MINUTES = 30    # Phase3: was 45
     STAGNATION_BAND    = 0.20
+    EARLY_STAG_MINUTES = 15    # Phase3: fast exit if dead flat
+    EARLY_STAG_R_MULT  = 0.30  # Phase3: exit if |pnl| < 0.30*R
 
     def __init__(self, config, data_feed, notifier):
         self.config = config
@@ -500,7 +502,20 @@ class PositionManager:
                     age_min = (
                         datetime.now(timezone.utc) - opened
                     ).total_seconds() / 60
-                    if (age_min >= self.STAGNATION_MINUTES
+
+                    # Phase3: early exit if within 0.3R of entry after 15 min
+                    risk_r = abs(pos['entry'] - pos['sl']) * pos['size']
+                    early_band = risk_r * self.EARLY_STAG_R_MULT
+
+                    if (age_min >= self.EARLY_STAG_MINUTES
+                            and abs(current_pnl) <= early_band):
+                        exit_reason = 'Breakeven_Stagnation'
+                        logger.info(
+                            f"EARLY_STAGNATION {symbol} | "
+                            f"age={age_min:.0f}m | "
+                            f"pnl=${current_pnl:+.2f} (<0.3R=${early_band:.2f})"
+                        )
+                    elif (age_min >= self.STAGNATION_MINUTES
                             and abs(profit_pct) <= self.STAGNATION_BAND):
                         exit_reason = 'Breakeven_Stagnation'
                         logger.info(

@@ -4,6 +4,14 @@ from config import TradingConfig
 
 logger = logging.getLogger(__name__)
 
+# Phase5: correlated sector exposure control
+SECTOR_GROUPS: dict[str, set] = {
+    'layer1':   {'SOL/USDT:USDT', 'AVAX/USDT:USDT', 'SUI/USDT:USDT'},
+    'payments': {'DOGE/USDT:USDT', 'XRP/USDT:USDT'},
+    'bluechip': {'ETH/USDT:USDT'},
+}
+MAX_SECTOR_POSITIONS = 2
+
 
 class RiskFilter:
 
@@ -91,6 +99,18 @@ class RiskFilter:
             else:
                 del self.stagnation_cooldown[symbol]
                 self.stagnation_streak[symbol] = 0
+
+        # 5г. Phase5: sector exposure — max 2 correlated alts simultaneously
+        if symbol:
+            for group_name, symbols in SECTOR_GROUPS.items():
+                if symbol in symbols:
+                    sector_count = sum(1 for s in current_positions if s in symbols)
+                    if sector_count >= MAX_SECTOR_POSITIONS:
+                        logger.info(
+                            f"RiskFilter blocked: sector_limit {group_name} "
+                            f"({sector_count}/{MAX_SECTOR_POSITIONS})"
+                        )
+                        return False, f"sector_limit_{group_name}"
 
         # 6. ADX too low — берём лучший из доступных таймфреймов
         adx_1h  = indicators.get('adx_1h',  0)

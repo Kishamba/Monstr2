@@ -28,6 +28,7 @@ from core.position_manager import PositionManager
 from core.telegram_commands import TelegramCommands
 from core.signal_monitor import SignalMonitor
 from core.direction_filter import is_direction_allowed
+from core.market_regime import MarketRegimeFilter
 from strategies.keltner_adx import KeltnerAdxStrategy
 from strategies.ema_macd import EMAMACDStrategy
 from strategies.aroon_macd import AroonMacdStrategy
@@ -46,6 +47,7 @@ async def main():
     strategy_aroon = AroonMacdStrategy(strategy_config)
     position_manager = PositionManager(config, data_feed, notifier)
     signal_monitor = SignalMonitor(flip_threshold=0.65)
+    market_regime  = MarketRegimeFilter()
 
     # Telegram command handler (runs in background)
     tg_commands = TelegramCommands(
@@ -86,9 +88,14 @@ async def main():
             await notifier.send_message("🌅 Новый торговый день начат")
 
         try:
-            # ── BTC тренд — обновляем раз в цикл ────────────────────────
+            # ── BTC тренд + режим — обновляем раз в цикл ─────────────────
             btc_trend = await data_feed.get_btc_trend()
             logger.info(f"BTC trend: {btc_trend.upper()}")
+            try:
+                btc_15m = await data_feed.get_ohlcv('BTC/USDT:USDT', '15m', limit=50)
+                market_regime.update_btc(btc_15m)
+            except Exception as _e:
+                logger.warning(f"BTC regime fetch error: {_e}")
 
             # ── Собираем сигналы по всем парам для монитора ──────────────
             all_pair_signals = []
@@ -339,6 +346,43 @@ async def main():
                     f"{symbol}: Direct signal={signal['action']} "
                     f"src={signal.get('source', '?')} "
                     f"ADX={indicators.get('adx_1h', 0):.0f}"
+                )
+
+                # Phase4: market regime filter
+                regime_blocked, regime_reason = market_regime.is_entry_blocked(
+                    signal['action'], symbol, indicators
+                )
+                if regime_blocked:
+                    logger.info(f"{symbol}: blocked by market_regime — {regime_reason}")
+                    await asyncio.sleep(2)
+                    continue
+
+                # Phase7: trade quality score
+                q_score = market_regime.score_entry(signal['action'], indicators)
+                if q_score < 60:
+                    logger.info(f"{symbol}: quality score too low ({q_score}/100), skip")
+                    await asyncio.sleep(2)
+                    continue
+
+                # Phase6: min R:R check
+                if levels.get('actual_rr', 0) < config.min_rr_ratio:
+                    logger.info(
+                        f"{symbol}: RR too low "
+                        f"({levels.get('actual_rr', 0):.2f} < {config.min_rr_ratio}), skip"
+                    )
+                    await asyncio.sleep(2)
+                    continue
+
+                # Phase4: reduce size in neutral BTC regime
+                risk_pct = config.risk_per_trade_pct
+                if market_regime.get_btc_bias() == 'neutral':
+                    risk_pct *= 0.75
+                decision['risk_pct'] = risk_pct
+
+                logger.info(
+                    f"{symbol}: ENTRY APPROVED | "
+                    f"score={q_score} rr={levels.get('actual_rr', 0):.2f} "
+                    f"btc={market_regime.get_btc_bias()} risk={risk_pct:.3f}%"
                 )
 
                 # 8. Исполнить прямой подтверждённый сигнал
