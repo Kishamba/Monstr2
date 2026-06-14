@@ -65,7 +65,7 @@ def generate_report_chart(days: int = 7) -> tuple[bytes, str]:
     # ── Заголовок ─────────────────────────────────────────────────────
     sign = '+' if total_pnl >= 0 else ''
     fig.suptitle(
-        f'Monster 2.0 — последние {days} дней  •  '
+        f'Monster 2.2 — последние {days} дней  •  '
         f'{total} сделок  •  '
         f'WR {win_rate:.0f}%  •  '
         f'P&L {sign}{total_pnl:.2f}$',

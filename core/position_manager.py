@@ -54,15 +54,14 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 class PositionManager:
 
-    FIXED_TP_DOLLAR    = 4.5   # Phase2: earlier extraction (was $8)
-    PARTIAL_TP_DOLLAR  = 6.0   # фиксируем $6 с первой половины
-    TRAIL_ACTIVATE_PCT = 0.5   # trailing активируется на +0.5%
-    TRAIL_DIST_PCT     = 0.4   # дистанция trailing
-    MAX_HOLD_HOURS     = 4
-    STAGNATION_MINUTES = 30    # Phase3: was 45
-    STAGNATION_BAND    = 0.20
-    EARLY_STAG_MINUTES = 15    # Phase3: fast exit if dead flat
-    EARLY_STAG_R_MULT  = 0.30  # Phase3: exit if |pnl| < 0.30*R
+    SESSION_NAME = 'Monster 2.2 — No-Red Trailing'
+    NO_RED_BUFFER_PCT = 0.0       # hard floor/ceiling at breakeven in shadow mode
+    TRAIL_LOCK_START = 0.35       # lock 35% of max profit immediately
+    TRAIL_LOCK_GOOD = 0.55        # lock 55% once profit is decent
+    TRAIL_LOCK_STRONG = 0.75      # lock 75% once move is strong
+    TRAIL_GOOD_PROFIT_PCT = 0.35
+    TRAIL_STRONG_PROFIT_PCT = 0.80
+    MAX_HOLD_HOURS = 4
 
     def __init__(self, config, data_feed, notifier):
         self.config = config
@@ -91,10 +90,14 @@ class PositionManager:
             'leverage':        self.config.leverage,
             'risk_per_trade':  self.config.risk_per_trade_pct,
             'symbols':         self.config.symbols,
-            'trail_activate':  self.TRAIL_ACTIVATE_PCT,
-            'trail_dist':      self.TRAIL_DIST_PCT,
+            'session_name':    self.SESSION_NAME,
+            'no_red_buffer_pct': self.NO_RED_BUFFER_PCT,
+            'trail_lock_start': self.TRAIL_LOCK_START,
+            'trail_lock_good': self.TRAIL_LOCK_GOOD,
+            'trail_lock_strong': self.TRAIL_LOCK_STRONG,
+            'trail_good_profit_pct': self.TRAIL_GOOD_PROFIT_PCT,
+            'trail_strong_profit_pct': self.TRAIL_STRONG_PROFIT_PCT,
             'max_hold_hours':  self.MAX_HOLD_HOURS,
-            'partial_tp_dollar': self.PARTIAL_TP_DOLLAR,
         }
         with sqlite3.connect(DB_PATH) as conn:
             conn.execute("DELETE FROM open_positions")
@@ -243,6 +246,65 @@ class PositionManager:
             )
             conn.commit()
 
+
+    def _initial_no_red_stop(self, entry: float, side: str) -> float:
+        buffer = self.NO_RED_BUFFER_PCT / 100
+        if side == 'long':
+            return entry * (1 + buffer)
+        return entry * (1 - buffer)
+
+    def _profit_pct(self, side: str, entry: float, price: float) -> float:
+        if side == 'long':
+            return (price - entry) / entry * 100
+        return (entry - price) / entry * 100
+
+    def _pnl_value(self, side: str, entry: float, price: float, size: float) -> float:
+        if side == 'long':
+            return (price - entry) * size
+        return (entry - price) * size
+
+    def _lock_ratio(self, profit_pct: float) -> float:
+        if profit_pct >= self.TRAIL_STRONG_PROFIT_PCT:
+            return self.TRAIL_LOCK_STRONG
+        if profit_pct >= self.TRAIL_GOOD_PROFIT_PCT:
+            return self.TRAIL_LOCK_GOOD
+        return self.TRAIL_LOCK_START
+
+    def _move_no_red_stop(self, symbol: str, pos: dict, price: float) -> float:
+        side = pos['side']
+        entry = pos['entry']
+        old_stop = pos.get('trail_sl') or pos.get('sl') or entry
+        no_red_stop = pos.get('no_red_stop') or self._initial_no_red_stop(entry, side)
+        peak = pos.get('peak_price') or entry
+
+        if side == 'long':
+            if price > peak:
+                peak = price
+                pos['peak_price'] = peak
+            max_profit = max(peak - entry, 0.0)
+            peak_profit_pct = max((peak - entry) / entry * 100, 0.0)
+            candidate = entry + max_profit * self._lock_ratio(peak_profit_pct)
+            new_stop = max(old_stop, no_red_stop, candidate)
+        else:
+            if price < peak:
+                peak = price
+                pos['peak_price'] = peak
+            max_profit = max(entry - peak, 0.0)
+            peak_profit_pct = max((entry - peak) / entry * 100, 0.0)
+            candidate = entry - max_profit * self._lock_ratio(peak_profit_pct)
+            new_stop = min(old_stop, no_red_stop, candidate)
+
+        pos['trail_sl'] = new_stop
+        pos['sl'] = new_stop
+        pos['trail_active'] = True
+        pos['no_red_stop'] = no_red_stop
+        if abs(new_stop - old_stop) > 1e-12:
+            logger.info(
+                f"NO_RED_TRAIL MOVE {symbol} {side.upper()} | "
+                f"peak={peak:.6f} stop={old_stop:.6f}->{new_stop:.6f}"
+            )
+        return new_stop
+
     def _delete_position(self, symbol: str):
         with sqlite3.connect(DB_PATH) as conn:
             conn.execute(
@@ -258,40 +320,49 @@ class PositionManager:
 
         ticker = await self.data_feed.get_ticker(symbol)
         entry_price = ticker['price']
-        sl_price = float(decision['sl_price'])
-        tp_price = float(decision['tp_price'])
-        action   = decision['action']
+        strategy_sl = float(decision['sl_price'])
+        strategy_tp = float(decision['tp_price'])
+        action = decision['action']
         risk_pct = float(decision.get('risk_pct',
                          self.config.risk_per_trade_pct))
 
-        sl_distance = abs(entry_price - sl_price)
-        if sl_distance < 1e-10:
-            logger.warning(f"SL distance ~0 for {symbol}, skip")
+        # Strategy SL is used only to size the position. The live/shadow exit
+        # is controlled by No-Red trailing from breakeven.
+        sizing_distance = abs(entry_price - strategy_sl)
+        if sizing_distance < 1e-10:
+            logger.warning(f"Sizing SL distance ~0 for {symbol}, skip")
             return {}
 
-        fee_rate       = 0.00055
-        risk_amount    = capital * (risk_pct / 100)
-        sl_pct         = sl_distance / entry_price
-        est_notional   = risk_amount / sl_pct
-        est_fees       = est_notional * fee_rate * 2
-        net_risk       = max(risk_amount - est_fees, 0.01)
-        position_size  = net_risk / sl_distance
-        notional       = position_size * entry_price
+        fee_rate = 0.00055
+        risk_amount = capital * (risk_pct / 100)
+        sl_pct = sizing_distance / entry_price
+        est_notional = risk_amount / sl_pct
+        est_fees = est_notional * fee_rate * 2
+        net_risk = max(risk_amount - est_fees, 0.01)
+        position_size = net_risk / sizing_distance
+        notional = position_size * entry_price
+        no_red_stop = self._initial_no_red_stop(entry_price, action)
 
         pos = {
             'symbol':          symbol,
             'side':            action,
             'entry':           entry_price,
-            'sl':              sl_price,
-            'tp':              tp_price,
-            'trail_sl':        sl_price,
-            'trail_active':    False,
+            'sl':              no_red_stop,
+            'tp':              strategy_tp,
+            'trail_sl':        no_red_stop,
+            'trail_active':    True,
             'peak_price':      entry_price,
+            'no_red_stop':     no_red_stop,
             'size':            position_size,
             'notional':        notional,
             'opened_at':       datetime.now(timezone.utc).isoformat(),
-            'meta':            {'decision': decision},
-            'partial_tp_done': False,
+            'meta':            {
+                'decision': decision,
+                'strategy_sl': strategy_sl,
+                'strategy_tp': strategy_tp,
+                'exit_model': self.SESSION_NAME,
+            },
+            'partial_tp_done': True,
         }
 
         self.positions[symbol] = pos
@@ -299,14 +370,21 @@ class PositionManager:
 
         logger.info(
             f"[SHADOW] Opened {action} {symbol} "
-            f"@ {entry_price} | SL={sl_price:.6f} "
-            f"TP={tp_price:.6f} | size={position_size:.4f} "
+            f"@ {entry_price} | NO_RED_SL={no_red_stop:.6f} "
+            f"dynamic_trailing=True | size={position_size:.4f} "
             f"notional={notional:.2f}"
         )
 
         await self.notifier.send_signal(
             symbol=symbol,
-            decision={**decision, 'entry_price': entry_price},
+            decision={
+                **decision,
+                'entry_price': entry_price,
+                'sl_price': no_red_stop,
+                'tp_price': strategy_tp,
+                'source': self.SESSION_NAME,
+                'exit_model': self.SESSION_NAME,
+            },
             indicators=decision.get('indicators', {}),
             capital=self.capital,
             position_size=position_size,
@@ -324,209 +402,34 @@ class PositionManager:
                 logger.warning(f"No price for {symbol}, skip check")
                 continue
 
-            side         = pos['side']
-            entry        = pos['entry']
-            size         = pos['size']
-            notional     = pos['notional']
-            sl           = pos.get('trail_sl', pos['sl'])
-            tp           = pos['tp']
-            trail_active = pos.get('trail_active', False)
-            partial_done = pos.get('partial_tp_done', False)
-
-            if side == 'long':
-                profit_pct  = (price - entry) / entry * 100
-                current_pnl = (price - entry) * size
-            else:
-                profit_pct  = (entry - price) / entry * 100
-                current_pnl = (entry - price) * size
+            side = pos['side']
+            entry = pos['entry']
+            size = pos['size']
+            current_pnl = self._pnl_value(side, entry, price, size)
+            profit_pct = self._profit_pct(side, entry, price)
+            old_stop = pos.get('trail_sl', pos.get('sl', entry))
+            stop = self._move_no_red_stop(symbol, pos, price)
 
             logger.info(
-                f"CHECK {symbol} {side.upper()} | "
-                f"entry={entry:.4f} now={price:.4f} | "
-                f"P&L={profit_pct:+.2f}% ${current_pnl:+.2f} | "
-                f"trail={'ON' if trail_active else 'off'} | "
-                f"partial={'DONE' if partial_done else 'pending'}"
+                f"NO_RED CHECK {symbol} {side.upper()} | "
+                f"entry={entry:.6f} now={price:.6f} | "
+                f"P&L={profit_pct:+.3f}% ${current_pnl:+.4f} | "
+                f"stop={stop:.6f} peak={pos.get('peak_price', entry):.6f}"
             )
 
             exit_reason = None
 
-            # ── FIXED TP: закрываем при +$4 ─────────────────────────────
-            if not exit_reason:
-                if side == 'long':
-                    current_pnl = (price - entry) * pos['size']
-                else:
-                    current_pnl = (entry - price) * pos['size']
-
-                if current_pnl >= self.FIXED_TP_DOLLAR:
-                    exit_reason = 'Fixed_TP'
-                    logger.info(
-                        f"FIXED_TP {symbol} | "
-                        f"pnl=${current_pnl:.2f} >= "
-                        f"${self.FIXED_TP_DOLLAR}"
-                    )
-
-            # ── ЧАСТИЧНЫЙ TP: фиксируем $6 с 50% позиции ────────────────
-            if not exit_reason and not partial_done and current_pnl >= self.PARTIAL_TP_DOLLAR:
-                half_pnl  = current_pnl * 0.5
-                half_size = size * 0.5
-                half_notional = notional * 0.5
-
-                pos['partial_tp_done'] = True
-                pos['size']    = half_size
-                pos['notional'] = half_notional
-                self._update_position_sl(symbol, pos)
-
-                dur = (
-                    datetime.now(timezone.utc) -
-                    datetime.fromisoformat(pos['opened_at'])
-                ).total_seconds() / 60
-
-                partial_trade = {
-                    'symbol':           symbol,
-                    'side':             side,
-                    'entry':            entry,
-                    'exit_price':       price,
-                    'sl':               pos['sl'],
-                    'tp':               tp,
-                    'size':             half_size,
-                    'notional':         half_notional,
-                    'pnl_value':        round(half_pnl, 4),
-                    'pnl_pct':          round(profit_pct, 4),
-                    'exit_reason':      'Partial_TP',
-                    'duration_minutes': round(dur, 1),
-                    'timestamp':        datetime.now(timezone.utc).isoformat(),
-                    'leverage':         self.config.leverage,
-                }
-                self.daily_pnl += half_pnl
-                self.capital   += half_pnl
-                await self._save_trade(partial_trade)
-                self.recent_trades.append(partial_trade)
-                if len(self.recent_trades) > 50:
-                    self.recent_trades.pop(0)
-
-                logger.info(
-                    f"PARTIAL_TP {symbol} | "
-                    f"+${half_pnl:.2f} (50% позиции) | "
-                    f"Остаток идёт на trailing"
-                )
-                await self.notifier.send_message(
-                    f"🎯 <b>ЧАСТИЧНЫЙ TP {symbol}</b>\n"
-                    f"Зафиксировано: <b>+${half_pnl:.2f}</b> "
-                    f"(50% позиции)\n"
-                    f"Остаток держим на trailing...\n"
-                    f"💵 Капитал: ${self.capital:,.2f}"
-                )
-                partial_done = True
-
-            # ── TRAILING для второй половины (после partial TP) ──────────
-            if partial_done:
-                peak = pos.get('peak_price', entry)
-
-                if side == 'long':
-                    if price > peak:
-                        pos['peak_price'] = price
-                        peak = price
-
-                    if not trail_active and profit_pct >= self.TRAIL_ACTIVATE_PCT:
-                        trail_active = True
-                        pos['trail_active'] = True
-                        new_sl = peak * (1 - self.TRAIL_DIST_PCT / 100)
-                        if new_sl > sl:
-                            pos['trail_sl'] = new_sl
-                            sl = new_sl
-                            logger.info(
-                                f"TRAIL ACTIVATED {symbol} LONG | "
-                                f"peak={peak:.4f} SL→{new_sl:.4f}"
-                            )
-                    elif trail_active:
-                        new_sl = peak * (1 - self.TRAIL_DIST_PCT / 100)
-                        if new_sl > sl:
-                            pos['trail_sl'] = new_sl
-                            sl = new_sl
-                            logger.info(
-                                f"TRAIL MOVED {symbol} | "
-                                f"peak={peak:.4f} SL→{new_sl:.4f}"
-                            )
-
-                    if price <= sl:
-                        exit_reason = 'Trailing_SL' if trail_active else 'SL'
-
-                else:  # short
-                    if price < peak:
-                        pos['peak_price'] = price
-                        peak = price
-
-                    if not trail_active and profit_pct >= self.TRAIL_ACTIVATE_PCT:
-                        trail_active = True
-                        pos['trail_active'] = True
-                        new_sl = peak * (1 + self.TRAIL_DIST_PCT / 100)
-                        if new_sl < sl:
-                            pos['trail_sl'] = new_sl
-                            sl = new_sl
-                            logger.info(
-                                f"TRAIL ACTIVATED {symbol} SHORT | "
-                                f"peak={peak:.4f} SL→{new_sl:.4f}"
-                            )
-                    elif trail_active:
-                        new_sl = peak * (1 + self.TRAIL_DIST_PCT / 100)
-                        if new_sl < sl:
-                            pos['trail_sl'] = new_sl
-                            sl = new_sl
-                            logger.info(
-                                f"TRAIL MOVED {symbol} | "
-                                f"peak={peak:.4f} SL→{new_sl:.4f}"
-                            )
-
-                    if price >= sl:
-                        exit_reason = 'Trailing_SL' if trail_active else 'SL'
-
-                self._update_position_sl(symbol, pos)
-
+            if side == 'long':
+                if price < entry:
+                    exit_reason = 'No_Red_Emergency_Exit'
+                elif price <= stop and stop > entry:
+                    exit_reason = 'No_Red_Trailing_SL'
             else:
-                # Partial TP ещё не взят — обычная логика SL/TP
-                if side == 'long':
-                    if price <= sl:
-                        exit_reason = 'SL'
-                    elif price >= tp:
-                        exit_reason = 'TP'
-                else:
-                    if price >= sl:
-                        exit_reason = 'SL'
-                    elif price <= tp:
-                        exit_reason = 'TP'
+                if price > entry:
+                    exit_reason = 'No_Red_Emergency_Exit'
+                elif price >= stop and stop < entry:
+                    exit_reason = 'No_Red_Trailing_SL'
 
-            # ── STAGNATION (только до partial TP) ───────────────────────
-            if not exit_reason and not partial_done:
-                try:
-                    opened = datetime.fromisoformat(pos['opened_at'])
-                    age_min = (
-                        datetime.now(timezone.utc) - opened
-                    ).total_seconds() / 60
-
-                    # Phase3: early exit if within 0.3R of entry after 15 min
-                    risk_r = abs(pos['entry'] - pos['sl']) * pos['size']
-                    early_band = risk_r * self.EARLY_STAG_R_MULT
-
-                    if (age_min >= self.EARLY_STAG_MINUTES
-                            and abs(current_pnl) <= early_band):
-                        exit_reason = 'Breakeven_Stagnation'
-                        logger.info(
-                            f"EARLY_STAGNATION {symbol} | "
-                            f"age={age_min:.0f}m | "
-                            f"pnl=${current_pnl:+.2f} (<0.3R=${early_band:.2f})"
-                        )
-                    elif (age_min >= self.STAGNATION_MINUTES
-                            and abs(profit_pct) <= self.STAGNATION_BAND):
-                        exit_reason = 'Breakeven_Stagnation'
-                        logger.info(
-                            f"STAGNATION {symbol} | "
-                            f"age={age_min:.0f}min | "
-                            f"P&L={profit_pct:+.2f}%"
-                        )
-                except Exception:
-                    pass
-
-            # ── TIMEOUT ──────────────────────────────────────────────────
             if not exit_reason:
                 try:
                     opened = datetime.fromisoformat(pos['opened_at'])
@@ -534,15 +437,22 @@ class PositionManager:
                         datetime.now(timezone.utc) - opened
                     ).total_seconds() / 3600
                     if age_h >= self.MAX_HOLD_HOURS:
-                        exit_reason = f'Timeout_{self.MAX_HOLD_HOURS}h'
+                        exit_reason = f'No_Red_Timeout_{self.MAX_HOLD_HOURS}h'
                         logger.info(
-                            f"TIMEOUT {symbol} after {age_h:.1f}h | "
-                            f"P&L={profit_pct:+.2f}%"
+                            f"NO_RED TIMEOUT {symbol} after {age_h:.1f}h | "
+                            f"P&L={profit_pct:+.3f}%"
                         )
                 except Exception:
                     pass
 
-            if exit_reason:
+            if not exit_reason:
+                self._update_position_sl(symbol, pos)
+            else:
+                logger.info(
+                    f"NO_RED EXIT {symbol} | reason={exit_reason} | "
+                    f"price={price:.6f} stop={old_stop:.6f}->{stop:.6f} "
+                    f"pnl=${current_pnl:+.4f}"
+                )
                 trade = await self._close_position(
                     symbol, pos, price, exit_reason
                 )
@@ -571,7 +481,7 @@ class PositionManager:
             'side':             pos['side'],
             'entry':            pos['entry'],
             'exit_price':       exit_price,
-            'sl':               pos['sl'],
+            'sl':               pos.get('trail_sl', pos['sl']),
             'tp':               pos['tp'],
             'size':             size,
             'notional':         notional,

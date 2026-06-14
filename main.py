@@ -60,12 +60,12 @@ async def main():
 
     mode_label = "SHADOW" if config.trading_mode == 'shadow' else "LIVE"
     await notifier.send_message(
-        f"🚀 <b>Monster 2.1</b>\n"
-        f"Стратегии: Keltner + EMA_MACD + AroonMacd\n"
+        f"🚀 <b>Monster 2.2</b>\n"
+        f"Стратегия: Keltner + EMA_MACD + AroonMacd + No-Red Trailing\n"
         f"Режим: {mode_label} | Капитал: ${config.shadow_capital:,.2f}\n"
         f"Пары: {', '.join(s.replace('/USDT:USDT','') for s in config.symbols)}"
     )
-    logger.info(f"Monster 2.1 started in {mode_label} mode (Keltner + EMA_MACD + AroonMacd)")
+    logger.info(f"Monster 2.2 started in {mode_label} mode (Keltner + EMA_MACD + AroonMacd + No-Red Trailing)")
 
     heartbeat_counter = 0
     current_day = date.today()
@@ -74,7 +74,7 @@ async def main():
         # ── Stop flag (set by /stop command) ──────────────────────────────────
         if getattr(position_manager, 'stop_requested', False):
             logger.info("Stop requested via Telegram, shutting down...")
-            await notifier.send_message("🛑 Monster 2.0 остановлен по команде /stop")
+            await notifier.send_message("🛑 Monster 2.2 остановлен по команде /stop")
             break
 
         # ── Daily reset at UTC midnight ────────────────────────────────────────
@@ -440,7 +440,7 @@ async def main():
 
     await tg_commands.stop()
     await data_feed.close()
-    logger.info("Monster 2.0 stopped")
+    logger.info("Monster 2.2 stopped")
 
 
 if __name__ == "__main__":

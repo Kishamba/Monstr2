@@ -105,7 +105,7 @@ class TelegramCommands:
             pass
 
         return (
-            f"📊 <b>Monster 2.1 — Статус</b>\n\n"
+            f"📊 <b>Monster 2.2 — Статус</b>\n\n"
             f"Режим:          {mode}\n"
             f"💰 Капитал:     <b>${capital:,.2f}</b>\n"
             f"{session_line}"
@@ -399,7 +399,7 @@ class TelegramCommands:
         adx_thr = sc.adx_threshold if sc else "—"
         chop_thr = sc.chop_threshold if sc else "—"
         return (
-            f"⚙️ <b>Настройки Monster 2.1</b>\n\n"
+            f"⚙️ <b>Настройки Monster 2.2</b>\n\n"
             f"Режим:         {mode}\n"
             f"Капитал:       ${cfg.shadow_capital:,.2f}\n"
             f"Плечо:         {cfg.leverage}x\n"
@@ -490,7 +490,7 @@ class TelegramCommands:
 
     async def cmd_start(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
-            "👋 Monster 2.1 на связи!\nВыбери действие:",
+            "👋 Monster 2.2 на связи!\nВыбери действие:",
             reply_markup=bottom_keyboard(),
         )
 
@@ -517,7 +517,7 @@ class TelegramCommands:
 
     async def cmd_help(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
-            "🤖 <b>Monster 2.1 — Команды</b>\n\n"
+            "🤖 <b>Monster 2.2 — Команды</b>\n\n"
             "/start — главное меню\n"
             "/status — текущий статус\n"
             "/positions — открытые позиции\n"
@@ -531,7 +531,7 @@ class TelegramCommands:
     async def cmd_stop(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         self.pm.stop_requested = True
         await update.message.reply_text(
-            "🛑 <b>Остановка Monster 2.1...</b>",
+            "🛑 <b>Остановка Monster 2.2...</b>",
             parse_mode='HTML',
             reply_markup=bottom_keyboard(),
         )

@@ -64,18 +64,17 @@ class Notifier:
             f"{icon} <b>ВХОД: {symbol} {action}</b>\n"
             f"{'─' * 30}\n"
             f"💰 Цена входа:   <code>${entry:,.4f}</code>\n"
-            f"🛑 Stop Loss:    <code>${sl:,.4f}</code>  (-{sl_pct:.2f}%)\n"
-            f"🎯 Take Profit:  <code>${tp:,.4f}</code>  (+{tp_pct:.2f}%)\n"
-            f"📊 R:R:          <b>{rr:.1f}:1</b>\n"
+            f"🛑 No-red стоп:  <code>${sl:,.4f}</code>\n"
+            f"🎯 Выход:        <b>динамический trailing</b>\n"
+            f"🔒 Правило:      стоп только вверх, назад не двигается\n"
             f"{'─' * 30}\n"
             f"💵 Капитал:      <code>${capital:,.2f}</code>\n"
             f"📐 Ставка:       <code>${margin:,.2f}</code> "
             f"× {leverage} = <code>${notional:,.2f}</code>\n"
-            f"⚠️ Риск (SL):    <code>${risk_dollar:,.2f}</code> "
-            f"(1% от капитала)\n"
+            f"⚠️ Риск:         выход при уходе ниже входа\n"
             f"🏦 Остаток:      <code>${remaining:,.2f}</code>\n"
             f"{'─' * 30}\n"
-            f"🧠 Стратегия:    {source}\n"
+            f"🧠 Стратегия:    {source or 'Monster 2.2 No-Red Trailing'}\n"
             f"{conf_icon} Уверенность:  {conf}\n"
             f"📝 {reason[:120]}\n"
         )
@@ -112,6 +111,8 @@ class Notifier:
         reason_icon = {
             'TP':          '🎯',
             'SL':          '🛑',
+            'No_Red_Trailing_SL': '🔒',
+            'No_Red_Emergency_Exit': '🛑',
             'Timeout_24h': '⏰',
             'manual':      '👋',
         }.get(reason, '📌')
@@ -162,7 +163,7 @@ class Notifier:
         bias_icon = {'long': '📈', 'short': '📉', 'neutral': '⏸'}.get(bias, '⏸')
 
         text = (
-            f"💓 <b>Monster 2.0 — Статус</b>\n"
+            f"💓 <b>Monster 2.2 — Статус</b>\n"
             f"{'─' * 30}\n"
             f"💵 Капитал:      <b>${capital:,.2f}</b>\n"
             f"{pnl_icon} Дневной P&L:  "
@@ -178,7 +179,7 @@ class Notifier:
 
     async def send_error(self, error_msg: str) -> None:
         text = (
-            f"🚨 <b>ОШИБКА Monster 2.0</b>\n\n"
+            f"🚨 <b>ОШИБКА Monster 2.2</b>\n\n"
             f"<code>{error_msg[:400]}</code>"
         )
         await self._send(text)
