@@ -100,7 +100,6 @@ class PositionManager:
             'max_hold_hours':  self.MAX_HOLD_HOURS,
         }
         with sqlite3.connect(DB_PATH) as conn:
-            conn.execute("DELETE FROM open_positions")
             cur = conn.execute(
                 "INSERT INTO sessions (started_at, config_json) VALUES (?, ?)",
                 (
@@ -110,7 +109,7 @@ class PositionManager:
             )
             conn.commit()
             sid = cur.lastrowid
-        logger.info(f"Session #{sid} started — open_positions cleared")
+        logger.info(f"Session #{sid} started — open_positions preserved")
         return sid
 
     def _init_db(self):

@@ -17,7 +17,7 @@ class TradingConfig:
     ])
     timeframe: str = '1h'
     timeframe_fast: str = '15m'
-    leverage: int = 10
+    leverage: int = 20
     risk_per_trade_pct: float = 0.25       # Phase1: was 0.5
     min_rr_ratio: float = 1.5              # Phase6: min acceptable R:R
     max_daily_loss_pct: float = 5.0
